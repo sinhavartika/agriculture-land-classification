@@ -1,0 +1,170 @@
+// angular $http http://stackoverflow.com/questions/18436385/using-angularjs-http-in-browser-console
+var $http = angular.element(document.body).injector().get('$http');
+var $q = angular.element(document.body).injector().get('$q');
+var districts = [];
+var  mandals = [];
+var villages = [];
+var grndPoints = [];
+/**
+  * First get all the districts
+  */
+var distrcitPromise = $http({
+    method: 'GET',
+    url: 'http://45.114.143.92/CMRabiWebService/includes/masterDropdowns1.php?LogDistrict=all'
+})
+distrcitPromise.then(function successCallback(response) {
+	//data from response
+	var districtsMap = response.data;
+
+	// all district promises
+	var mandalPromises = [];
+	
+	for(var dId in districtsMap){
+		var district = {
+			id : dId,
+			name : districtsMap[dId],
+			mandals : []
+		}
+		districts.push(district);
+	}
+
+	// fetch mandals for districts
+	mandalPromises = districts.map(function(dObj){
+		// get mandals
+		return _getAllMandals(dObj.id);
+	})
+
+	$q.all(mandalPromises).then(getMandalSuccess).catch(errorCallback);
+})
+
+distrcitPromise.catch();
+
+/*************** Promise callback Functions **************/
+/**
+  * Function that will be called on success of all get mandal calls
+  */
+function getMandalSuccess(responses){
+	responses.forEach(function(mresponse, idx){
+		var district = districts[idx];
+		var villagesPromises = [];
+		
+		// convert mresponse.data to array
+		for(var mId in mresponse.data){
+			var mandal = {
+				id : mId,
+				name : mresponse.data[mId],
+				districtId : district.id, 
+				villages : []
+			}
+			district.mandals.push(mandal);
+			mandals.push(mandal);
+		}
+	});
+	// fetch villages for mandals
+	var villagesPromises = mandals.map(function(mObj){
+		// get villages
+		return _getAllVillages(mObj.id);
+	});
+	$q.all(villagesPromises).then(getVillageSuccess).catch(errorCallback);
+}
+
+/**
+  * Function that will be called on success of all get village calls
+  */
+function getVillageSuccess(responses){
+	responses.forEach(function(vresponse, idx){
+		var mandal = mandals[idx];
+		
+		// convert vresponse.data to array
+		for(var mId in vresponse.data){
+			var village = {
+				id : mId,
+				mandalId : mandal.id,
+				districtId : mandal.districtId,
+				name : vresponse.data[mId],
+				points : []
+			}
+			mandal.villages.push(village);
+			villages.push(village);
+		}
+	});
+	// fetch villages for mandals
+	
+	var pointsPromises = villages.map(function(vObj){
+		// get villages
+		return _getAllPoints(vObj.districtId, vObj.mandalId, vObj.id);
+	});
+	$q.all([_getAllPoints(villages[0].districtId, villages[0].mandalId, villages[0].id)]).then(getPointsSuccess).catch(errorCallback);
+}
+
+/**
+  * Function that will be called on success of all get mandal calls
+  */
+function getPointsSuccess(responses){
+	responses.forEach(function(presponse, idx){
+		var village = villages[idx];
+		
+		// convert vresponse.data to array
+		for(var pointIdx = 0; pointIdx < presponse.data.length; pointIdx++){
+			var point = presponse.data[pointIdx]
+			point.mandalId = village.mandalId;
+			point.districtId = village.districtId;
+			point.villageId = village.id;
+			village.points.push(point);
+			console.log(point)
+			grndPoints.push(point);
+		}
+	});
+	// ends here
+	console.log(grndPoints);
+}
+
+/**
+  * Generic error callback
+  */
+function errorCallback(response) {
+    console.log(response.data)
+}
+
+
+/**************** Private functions ****************/
+/** 
+  * Function to get all mandals for a distrcits
+  * @params 
+  *			districtId : districtId	 
+  */ 
+function _getAllMandals(districtId){
+	console.log("Making call for " + districtId + " disctrict.")
+	return $http({
+        method: 'GET',
+        url: 'http://45.114.143.92/CMRabiWebService/includes/masterDropdowns1.php?selectedDist=' + districtId
+    })
+}
+
+/** 
+  * Function to get all villages for a mandal
+  * @params 
+  *			mandalId : mandalId	 
+  */ 
+function _getAllVillages(mandalId){
+	console.log("Making call for " + mandalId + " mandal.")
+	return $http({
+        method: 'GET',
+        url: 'http://45.114.143.92/CMRabiWebService/includes/masterDropdowns1.php?selectedMand=' + mandalId
+    })
+}
+
+/** 
+  * Function to get all villages for a mandal
+  * @params 
+  *			districtId : districtId
+  *			mandalId : mandalId
+  *			villageId : villageId
+  */ 
+function _getAllPoints(districtId, mandalId, villageId){
+	console.log("Making call for points in district " + districtId + " mandal " + mandalId + " village " + villageId)
+	return $http({
+        method: 'GET',
+        url: "http://45.114.143.92/CMRabiWebService/includes/areaSownDataObjects.php?page=GMapRepTest&selectedDist="+ districtId + "&selectedMand=" + mandalId +"&selectedVill=" + villageId
+    })
+}
