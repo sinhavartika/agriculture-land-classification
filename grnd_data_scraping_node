@@ -1,0 +1,211 @@
+var request = require('request');
+var $q = require('q');
+var fs = require('fs');
+
+var districts = [];
+var  mandals = [];
+var villages = [];
+var grndPoints = [];
+/**
+  * First get all the districts
+  */
+
+var distrcitPromise =  _requestData({
+    url: 'http://45.114.143.92/CMRabiWebService/includes/masterDropdowns1.php',
+    method: 'GET',
+    qs: {'LogDistrict': 'all'}
+});
+
+distrcitPromise.then(function successCallback(response) {
+    //data from response
+    var districtsMap = response;
+    // all district promises
+    var mandalPromises = [];
+    
+    for(var dId in districtsMap){
+        var district = {
+            id : dId,
+            name : districtsMap[dId],
+            mandals : []
+        }
+        districts.push(district);
+    }
+    _outputData(districts, "districts.json");
+    // fetch mandals for districts
+    mandalPromises = districts.map(function(dObj){
+        // get mandals
+        return _getAllMandals(dObj.id);
+    })
+
+    $q.all(mandalPromises).then(getMandalSuccess).catch(errorCallback);
+})
+
+distrcitPromise.catch(errorCallback);
+
+/*************** Promise callback Functions **************/
+/**
+  * Function that will be called on success of all get mandal calls
+  */
+function getMandalSuccess(responses){
+    responses.forEach(function(mresponse, idx){
+        var district = districts[idx];
+        var villagesPromises = [];
+        
+        // convert mresponse.data to array
+        for(var mId in mresponse){
+            var mandal = {
+                id : mId,
+                name : mresponse[mId],
+                districtId : district.id, 
+                villages : []
+            }
+            district.mandals.push(mandal);
+            mandals.push(mandal);
+        }
+    });
+    _outputData(mandals, "mandals.json");
+    // fetch villages for mandals
+    var villagesPromises = mandals.map(function(mObj){
+        // get villages
+        return _getAllVillages(mObj.id);
+    });
+    $q.all(villagesPromises).then(getVillageSuccess).catch(errorCallback);
+}
+
+/**
+  * Function that will be called on success of all get village calls
+  */
+function getVillageSuccess(responses){
+    responses.forEach(function(vresponse, idx){
+        var mandal = mandals[idx];
+        
+        // convert vresponse.data to array
+        for(var mId in vresponse){
+            var village = {
+                id : mId,
+                mandalId : mandal.id,
+                districtId : mandal.districtId,
+                name : vresponse[mId],
+                points : []
+            }
+            mandal.villages.push(village);
+            villages.push(village);
+        }
+    });
+
+    _outputData(villages, "villages.json");
+
+    // fetch villages for mandals
+    var pointsPromises = villages.map(function(vObj){
+        // get villages
+        return _getAllPoints(vObj.districtId, vObj.mandalId, vObj.id);
+    });
+    //[_getAllPoints(villages[0].districtId, villages[0].mandalId, villages[0].id)]
+    $q.all(pointsPromises).then(getPointsSuccess).catch(errorCallback);
+}
+
+/**
+  * Function that will be called on success of all get mandal calls
+  */
+function getPointsSuccess(responses){
+    responses.forEach(function(presponse, idx){
+        var village = villages[idx];
+        
+        // convert vresponse.data to array
+        for(var pointIdx = 0; pointIdx < presponse.length; pointIdx++){
+            var point = presponse[pointIdx]
+            point.mandalId = village.mandalId;
+            point.districtId = village.districtId;
+            point.villageId = village.id;
+            village.points.push(point);
+            grndPoints.push(point);
+        }
+    });
+    // ends here
+    _outputData(distrcits, "points.json")
+}
+
+/**
+  * Generic error callback
+  */
+function errorCallback(response) {
+    console.log(response)
+}
+
+
+/**************** Private functions ****************/
+/** 
+  * Function to get all mandals for a distrcits
+  * @params 
+  *         districtId : districtId  
+  */ 
+function _getAllMandals(districtId){
+    console.log("Making call for " + districtId + " disctrict.");
+    return _requestData({
+        url: 'http://45.114.143.92/CMRabiWebService/includes/masterDropdowns1.php',
+        method: 'GET',
+        qs: {'selectedDist': districtId}
+    });
+}
+
+/** 
+  * Function to get all villages for a mandal
+  * @params 
+  *         mandalId : mandalId  
+  */ 
+function _getAllVillages(mandalId){
+    console.log("Making call for " + mandalId + " mandal.")
+    return _requestData({
+        url: 'http://45.114.143.92/CMRabiWebService/includes/masterDropdowns1.php',
+        method: 'GET',
+        qs: {'selectedMand': mandalId}
+    });
+}
+
+/** 
+  * Function to get all villages for a mandal
+  * @params 
+  *         districtId : districtId
+  *         mandalId : mandalId
+  *         villageId : villageId
+  */ 
+function _getAllPoints(districtId, mandalId, villageId){
+    console.log("Making call for points in district " + districtId + " mandal " + mandalId + " village " + villageId)
+    return _requestData({
+        url: 'http://45.114.143.92/CMRabiWebService/includes/areaSownDataObjects.php',
+        method: 'GET',
+        qs: {
+            'page' : 'GMapRepTest', 
+            "selectedDist" : districtId, 
+            "selectedMand" : selectedMand, 
+            "selectedVill" : selectedVill
+        }
+    });
+}
+
+
+function _requestData(options){
+    var deferred = $q.defer();
+    request(options, function (error, response, body) {
+        if (!error && response.statusCode == 200) {
+            deferred.resolve(body);
+        }else{
+            deferred.reject(error);
+        }
+    });
+    return deferred.promise;
+}
+
+/** 
+  * function to output data in a file
+  */
+function _outputData(data, filePath){
+    var dataStr = JSON.stringify(data, null, 4);
+    fs.writeFile(filePath, dataStr, function(err) {
+        if(err) {
+            console.log(err);
+        }else{
+            console.log('Successfully written in ' + filePath);
+        }
+    });
+}
