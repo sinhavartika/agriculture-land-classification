@@ -10,18 +10,17 @@ var grndPoints = [];
   * First get all the districts
   */
 
-var distrcitPromise =  _requestData({
+var districtPromise =  _requestData({
     url: 'http://45.114.143.92/CMRabiWebService/includes/masterDropdowns1.php',
     method: 'GET',
     qs: {'LogDistrict': 'all'}
 });
 
-distrcitPromise.then(function successCallback(response) {
+districtPromise.then(function successCallback(response) {
     //data from response
-    var districtsMap = response;
+    var districtsMap = JSON.parse(response);
     // all district promises
     var mandalPromises = [];
-    
     for(var dId in districtsMap){
         var district = {
             id : dId,
@@ -30,8 +29,10 @@ distrcitPromise.then(function successCallback(response) {
         }
         districts.push(district);
     }
+
     _outputData(districts, "districts.json");
-    // fetch mandals for districts
+
+    //fetch mandals for districts
     mandalPromises = districts.map(function(dObj){
         // get mandals
         return _getAllMandals(dObj.id);
@@ -40,7 +41,7 @@ distrcitPromise.then(function successCallback(response) {
     $q.all(mandalPromises).then(getMandalSuccess).catch(errorCallback);
 })
 
-distrcitPromise.catch(errorCallback);
+districtPromise.catch(errorCallback);
 
 /*************** Promise callback Functions **************/
 /**
@@ -50,6 +51,8 @@ function getMandalSuccess(responses){
     responses.forEach(function(mresponse, idx){
         var district = districts[idx];
         var villagesPromises = [];
+
+        mresponse = JSON.parse(mresponse);
         
         // convert mresponse.data to array
         for(var mId in mresponse){
@@ -63,13 +66,15 @@ function getMandalSuccess(responses){
             mandals.push(mandal);
         }
     });
+
     _outputData(mandals, "mandals.json");
-    // fetch villages for mandals
-    var villagesPromises = mandals.map(function(mObj){
-        // get villages
-        return _getAllVillages(mObj.id);
-    });
-    $q.all(villagesPromises).then(getVillageSuccess).catch(errorCallback);
+
+    //fetch villages for mandals
+    // var villagesPromises = mandals.map(function(mObj){
+    //     // get villages
+    //     return _getAllVillages(mObj.id);
+    // });
+    $q.all([_getAllVillages(mandals[0].id), _getAllVillages(mandals[1].id)]).then(getVillageSuccess).catch(errorCallback);
 }
 
 /**
@@ -78,7 +83,7 @@ function getMandalSuccess(responses){
 function getVillageSuccess(responses){
     responses.forEach(function(vresponse, idx){
         var mandal = mandals[idx];
-        
+        vresponse = JSON.parse(vresponse);
         // convert vresponse.data to array
         for(var mId in vresponse){
             var village = {
@@ -92,10 +97,8 @@ function getVillageSuccess(responses){
             villages.push(village);
         }
     });
-
-    _outputData(villages, "villages.json");
-
-    // fetch villages for mandals
+    _outputData(villages, "villages.json");    
+    //fetch villages for mandals
     var pointsPromises = villages.map(function(vObj){
         // get villages
         return _getAllPoints(vObj.districtId, vObj.mandalId, vObj.id);
@@ -110,7 +113,7 @@ function getVillageSuccess(responses){
 function getPointsSuccess(responses){
     responses.forEach(function(presponse, idx){
         var village = villages[idx];
-        
+        presponse = JSON.parse(presponse);
         // convert vresponse.data to array
         for(var pointIdx = 0; pointIdx < presponse.length; pointIdx++){
             var point = presponse[pointIdx]
@@ -121,8 +124,7 @@ function getPointsSuccess(responses){
             grndPoints.push(point);
         }
     });
-    // ends here
-    _outputData(distrcits, "points.json")
+    _outputData(villages, "points.json");
 }
 
 /**
@@ -177,8 +179,8 @@ function _getAllPoints(districtId, mandalId, villageId){
         qs: {
             'page' : 'GMapRepTest', 
             "selectedDist" : districtId, 
-            "selectedMand" : selectedMand, 
-            "selectedVill" : selectedVill
+            "selectedMand" : mandalId, 
+            "selectedVill" : villageId
         }
     });
 }
@@ -190,6 +192,7 @@ function _requestData(options){
         if (!error && response.statusCode == 200) {
             deferred.resolve(body);
         }else{
+            _outputData(response, "error.json")
             deferred.reject(error);
         }
     });
